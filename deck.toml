@@ -1,0 +1,29 @@
+[package]
+name = "@deckyard/mitoleaf"
+version = "0.1.0"
+description = "Reader for the mitoLEAF human mitochondrial phylogeny: haplogroup tree, motif accumulation with back mutations, and nearest-haplogroup lookup."
+license = "LGPL-3.0-only"
+authors = ["mplx <mplx@jennifer-lang.dev>"]
+capabilities = []
+keywords = ["mtdna", "mitochondrial", "haplogroup", "phylogeny", "mitoleaf", "forensics", "genetics"]
+
+[package.urls]
+deck = "https://raw.githubusercontent.com/deckyard/deck-mitoleaf/main/deck.toml"
+homepage = "https://github.com/deckyard/deck-mitoleaf"
+manual = "https://deckyard.github.io/deck-mitoleaf/"
+
+[engines]
+jennifer = ">=0.25.0"
+
+# Haplotypes come back as lineage.MtHaplotype, and motif gains are parsed by
+# lineage.parseDifference, so the rCRS nomenclature has one implementation
+# rather than two. The dependency runs one way only.
+[decks]
+"@deckyard/forensicgenetics" = ">=0.1.0"
+
+# Where that dependency is read from. It is not in the public registry yet, so
+# it resolves from its git remote instead; the constraint above still decides
+# which tag is taken. Drop this section once the deck is published and the
+# registry can answer for it.
+[sources]
+"@deckyard/forensicgenetics" = "https://github.com/deckyard/deck-forensicgenetics.git"

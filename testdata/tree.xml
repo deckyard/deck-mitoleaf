@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Synthetic mitoLEAF-shaped fixture for the test overlay and the example.
+It is NOT the mitoLEAF phylogeny - four haplogroups, chosen to exercise the
+parts that matter: an insertion, an IUPAC ambiguity, a deletion, and back
+mutations in both spellings - base-first (A263) and leading-minus (-315.1).
+Get the real tree from https://forensicgenomics.github.io/mitoLeaf/.
+-->
+<Node Id="mt-MRCA" HG="73G 146C 263G 315.1c 16519Y">
+  <Node Id="L0" HG="A263 1048T">
+    <Node Id="L0a" HG="T146 5231A 16278T">
+      <Node Id="L0a1" HG="C16278 8281-"/>
+    </Node>
+    <Node Id="L0b" HG="16187T"/>
+  </Node>
+  <Node Id="L1" HG="3594T 16187T">
+    <Node Id="L1a" HG="-315.1 8994A"/>
+  </Node>
+</Node>

@@ -1,0 +1,17 @@
+# Grimoire output
+site/
+
+# Release staging
+dist/
+*.tar.gz
+*.tar.gz.sha256
+
+# Hand-populated deck tree until jvc exists (see README)
+vendor/
+.jennifer-src/
+.ci-fixtures/
+.jfmt-*.tmp
+
+# The real mitoLEAF download, kept locally for benchmarks; not redistributed.
+testdata/mitoLEAF_phm.xml
+.docblocks-*/
