@@ -59,11 +59,12 @@ On the published 6409-haplogroup tree, one desktop core:
 
 | Operation | Time |
 | --- | --- |
-| `parse` of the 549 KB phm XML | ~0.5 s |
-| `assign`, one pass over all 6409 haplogroups | ~2 s |
+| `parse` of the 549 KB phm XML | ~0.25 s |
+| `assign`, one pass over all 6409 haplogroups | ~1.5 s |
 
 Parse the tree once and reuse the `Tree`. `parse` builds a flat node list and
 assembles the tree in one pass; threading the `Tree` through the recursion
 deep-copied the node map at every node and took 2m14s on the same file.
 `assign` avoids rebuilding each haplotype from the root, which would multiply
-the work by the tree's depth.
+the work by the tree's depth, and walks with an explicit stack: as a recursion
+that passed the `Tree` along it took 56 s in an importing program.

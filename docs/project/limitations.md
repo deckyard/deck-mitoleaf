@@ -31,7 +31,7 @@ phm file states it in a leading comment.
 **No tree is bundled.** `testdata/tree.xml` is a seven-haplogroup synthetic
 fixture for the tests and the example, not the phylogeny.
 
-**Whole-tree operations take seconds.** `parse` takes ~0.5 s and `assign` ~2 s
+**Whole-tree operations take seconds.** `parse` takes ~0.25 s and `assign` ~1.5 s
 on the published tree ([figures](../guide/assignment.md#performance)): fine
 interactively, too slow inside a loop over thousands of samples without
 restructuring.
