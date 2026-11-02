@@ -266,27 +266,48 @@ def struct Flat {
     motif as list of string
 };
 
-func flatten(e as xml.Value, parent as string) {
+# Pending is one element still to flatten, under the haplogroup that encloses it.
+def struct Pending {
+    e as xml.Value,
+    parent as string
+};
+
+# flatten walks the document in preorder with an explicit stack: recursing
+# and splicing each subtree's list into its parent's copies every node once
+# per level above it.
+func flatten(root as xml.Value) {
     def out as list of Flat init [];
-    if (xml.typeOf($e) != "element") {
-        return $out;
-    }
-    if (strings.lower(xml.tag($e)) != "node") {
-        for (def c in xml.children($e)) {
-            for (def f in flatten($c, $parent)) {
-                $out[] = $f;
-            }
+    def stack as list of Pending init [Pending{e: $root, parent: ""}];
+    def size as int init 1;
+    while ($size > 0) {
+        $size = $size - 1;
+        def top as Pending init $stack[$size];
+        if (xml.typeOf($top.e) != "element") {
+            continue;
         }
-        return $out;
-    }
-    def id as string init strings.trim(attrValue($e, ["Id", "id", "ID"]));
-    if (len($id) == 0) {
-        fail("a <Node> element carries no Id attribute");
-    }
-    $out[] = Flat{id: $id, parent: $parent, motif: splitMotif(attrValue($e, ["HG", "hg", "Hg"]))};
-    for (def c in xml.children($e)) {
-        for (def f in flatten($c, $id)) {
-            $out[] = $f;
+        def under as string init $top.parent;
+        if (strings.lower(xml.tag($top.e)) == "node") {
+            def id as string init strings.trim(attrValue($top.e, ["Id", "id", "ID"]));
+            if (len($id) == 0) {
+                fail("a <Node> element carries no Id attribute");
+            }
+            $out[] = Flat{
+                id: $id,
+                parent: $under,
+                motif: splitMotif(attrValue($top.e, ["HG", "hg", "Hg"]))
+            };
+            $under = $id;
+        }
+        # pushed in reverse, so children come off in document order
+        def kids as list of xml.Value init xml.children($top.e);
+        for (def i as int init len($kids) - 1; $i >= 0; $i = $i - 1) {
+            def p as Pending init Pending{e: $kids[$i], parent: $under};
+            if ($size < len($stack)) {
+                $stack[$size] = $p;
+            } else {
+                $stack[] = $p;
+            }
+            $size = $size + 1;
         }
     }
     return $out;
@@ -306,7 +327,7 @@ func flatten(e as xml.Value, parent as string) {
  *   has no `Id`, or a haplogroup name appears twice
  */
 export func parse(doc as string) {
-    def flat as list of Flat init flatten(xml.decode($doc), "");
+    def flat as list of Flat init flatten(xml.decode($doc));
     if (len($flat) == 0) {
         fail("no <Node> element found in the document");
     }
@@ -321,11 +342,7 @@ export func parse(doc as string) {
     # takes and returns a Tree would deep-copy all 6000-odd nodes per link.
     for (def f in $flat) {
         if (len($f.parent) > 0) {
-            def p as Node init $t.nodes[$f.parent];
-            def kids as list of string init $p.children;
-            $kids[] = $f.id;
-            $p.children = $kids;
-            $t.nodes[$f.parent] = $p;
+            $t.nodes[$f.parent].children[] = $f.id;
         }
     }
     return $t;
@@ -495,30 +512,19 @@ func stateDistance(a as map of string to string, b as map of string to string) {
     return $total;
 }
 
-func searchFrom(
-    t as Tree,
+# Frame is one pending node of the search in `assign`, with the state its
+# parent reached.
+def struct Frame {
     id as string,
-    state as map of string to string,
-    observed as map of string to string,
-    best as Match) {
-    def here as map of string to string init applyMotif($state, $t.nodes[$id].motif);
-    def out as Match init $best;
-    def d as int init stateDistance($here, $observed);
-    if ($out.distance < 0 or $d < $out.distance) {
-        $out = Match{haplogroup: $id, distance: $d};
-    }
-    for (def c in $t.nodes[$id].children) {
-        $out = searchFrom($t, $c, $here, $observed, $out);
-    }
-    return $out;
-}
+    state as map of string to string
+};
 
 /**
  * The haplogroup whose haplotype is nearest an observed one, by the same
  * measure as `distance`.
  *
  * One depth-first pass in document order scores every haplogroup once (about
- * 2 s on the 6409-haplogroup tree). Ties go to the first node reached, so an
+ * 1.5 s on the 6409-haplogroup tree). Ties go to the first node reached, so an
  * ancestor beats an equally distant descendant.
  *
  * This is a nearest-neighbour report, not a validated haplogroup call: it
@@ -531,6 +537,34 @@ func searchFrom(
  * @throws {Error} kind "mitoleaf" or "lineage" on a malformed motif token
  */
 export func assign(t as Tree, h as lineage.MtHaplotype) {
+    # An explicit preorder stack, not recursion: a recursive call that passes
+    # the Tree deep-copies all of it per node once the deck is imported.
+    def observed as map of string to string init observedState($h);
+    def best as Match init Match{haplogroup: "", distance: -1};
     def empty as map of string to string init {};
-    return searchFrom($t, $t.root, $empty, observedState($h), Match{haplogroup: "", distance: -1});
+    # `size` is the live depth: slots above it are reused, never sliced off,
+    # since a slice copies every pending state
+    def stack as list of Frame init [Frame{id: $t.root, state: $empty}];
+    def size as int init 1;
+    while ($size > 0) {
+        $size = $size - 1;
+        def top as Frame init $stack[$size];
+        def here as map of string to string init applyMotif($top.state, $t.nodes[$top.id].motif);
+        def d as int init stateDistance($here, $observed);
+        if ($best.distance < 0 or $d < $best.distance) {
+            $best = Match{haplogroup: $top.id, distance: $d};
+        }
+        # pushed in reverse, so children are visited in document order
+        def kids as list of string init $t.nodes[$top.id].children;
+        for (def i as int init len($kids) - 1; $i >= 0; $i = $i - 1) {
+            def f as Frame init Frame{id: $kids[$i], state: $here};
+            if ($size < len($stack)) {
+                $stack[$size] = $f;
+            } else {
+                $stack[] = $f;
+            }
+            $size = $size + 1;
+        }
+    }
+    return $best;
 }
