@@ -1,6 +1,6 @@
 [package]
 name = "@deckyard/mitoleaf"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reader for the mitoLEAF human mitochondrial phylogeny: haplogroup tree, motif accumulation with back mutations, and nearest-haplogroup lookup."
 license = "LGPL-3.0-only"
 authors = ["mplx <mplx@jennifer-lang.dev>"]
