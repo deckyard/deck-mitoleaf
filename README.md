@@ -10,16 +10,16 @@ haplogroup into its defining haplotype with back mutations applied, and finds
 the haplogroup nearest an observed haplotype. Haplotypes are
 `lineage.MtHaplotype` values from
 [`@deckyard/forensicgenetics`](https://github.com/deckyard/deck-forensicgenetics).
-Pure Jennifer, TinyGo-clean.
+Pure Jennifer.
 
 Manual: **<https://deckyard.github.io/deck-mitoleaf/>**
 
 ## Install
 
-Requires Jennifer 0.25.0 or newer.
+Requires Jennifer 0.26.0 or newer.
 
 ```sh
-jvc add "@deckyard/mitoleaf" "^0.1.0"
+jvc add "@deckyard/mitoleaf" "^0.2.0"
 jvc install
 ```
 

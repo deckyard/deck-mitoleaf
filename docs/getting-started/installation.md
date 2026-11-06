@@ -2,11 +2,11 @@
 
 ## Requirements
 
-Jennifer 0.25.0 or newer. Every source file declares the floor, and the
+Jennifer 0.26.0 or newer. Every source file declares the floor, and the
 interpreter refuses to load the deck on an older build:
 
 ```jennifer
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 ```
 
 One deck dependency,
@@ -18,7 +18,7 @@ for `lineage.MtHaplotype` and `lineage.parseDifference`.
 From a project with a `deck.toml`:
 
 ```sh
-jvc add "@deckyard/mitoleaf" "^0.1.0"
+jvc add "@deckyard/mitoleaf" "^0.2.0"
 jvc install
 ```
 
@@ -70,7 +70,7 @@ jvc install
 
 ```toml
 [decks]
-"@deckyard/mitoleaf" = "^0.1.0"
+"@deckyard/mitoleaf" = "^0.2.0"
 
 [sources]
 "@deckyard/mitoleaf" = "https://github.com/deckyard/deck-mitoleaf.git"
