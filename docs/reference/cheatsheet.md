@@ -14,7 +14,8 @@ every signature, field and value on this page against the code.
 
 | Function | Returns | Does |
 |---|---|---|
-| `mitoleaf.parse(doc)` | `Tree` | parses a phm XML document; motifs are stored unvalidated |
+| `mitoleaf.parse(doc)` | `Tree` | parses a phm XML document; motifs are pre-parsed into `ops`, not rejected |
+| `mitoleaf.fromNodes(root, nodes)` | `Tree` | a `Tree` from hand-built nodes, `ops` filled in |
 | `mitoleaf.haplogroups(t)` | `list of string` | every haplogroup, in document order |
 | `mitoleaf.has(t, hg)` | `bool` | whether `hg` is in the tree (exact, case-sensitive) |
 | `mitoleaf.node(t, hg)` | `Node` | one haplogroup's node |
@@ -45,6 +46,7 @@ every signature, field and value on this page against the code.
 |---|---|
 | `root as string` | root haplogroup, `"mt-MRCA"` in the published tree |
 | `nodes as map of string to Node` | haplogroup name to node, in document order |
+| `ops as map of string to string` | haplogroup name to its motif pre-parsed (internal encoding); built by `parse` / `fromNodes` |
 
 ### `mitoleaf.MotifItem`
 

@@ -13,7 +13,7 @@ homepage = "https://github.com/deckyard/deck-mitoleaf"
 manual = "https://deckyard.github.io/deck-mitoleaf/"
 
 [engines]
-jennifer = ">=0.25.0"
+jennifer = ">=0.26.0"
 
 [decks]
 "@deckyard/forensicgenetics" = ">=0.1.0"

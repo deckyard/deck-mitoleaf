@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
 Synthetic mitoLEAF-shaped fixture for the test overlay and the example.
-It is NOT the mitoLEAF phylogeny - four haplogroups, chosen to exercise the
+It is NOT the mitoLEAF phylogeny - seven haplogroups, chosen to exercise the
 parts that matter: an insertion, an IUPAC ambiguity, a deletion, and back
 mutations in both spellings - base-first (A263) and leading-minus (-315.1).
 Get the real tree from https://forensicgenomics.github.io/mitoLeaf/.

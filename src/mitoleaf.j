@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 /**
  * Reader for the mitoLEAF human mitochondrial phylogeny.
@@ -71,13 +71,19 @@ export def struct Node {
 };
 
 /**
- * A parsed phylogeny.
+ * A parsed phylogeny. Build one with `parse` or `fromNodes`; a hand-written
+ * `Tree{...}` literal must set `ops` too (`{}` is valid but slower).
  * @field root {string} root haplogroup, "mt-MRCA" in the published tree
  * @field nodes {map of string to Node} haplogroup name to node, in document order
+ * @field ops {map of string to string} haplogroup name to its motif
+ *   pre-parsed, in an internal encoding; derived from `nodes`, so rebuild it
+ *   with `fromNodes` after changing a motif. A haplogroup missing here has its
+ *   motif parsed on every use
  */
 export def struct Tree {
     root as string,
-    nodes as map of string to Node
+    nodes as map of string to Node,
+    ops as map of string to string
 };
 
 /**
@@ -147,8 +153,26 @@ func isReversion(ch as list of string) {
     return allDigits($ch, 1);
 }
 
+# The last rCRS position: a back mutation names a reference position, so it
+# must lie on the reference.
+def const RCRS_LENGTH as int init 16569;
+
+# reversionPosition reads the position of a back mutation: at most five digits,
+# in [1, RCRS_LENGTH].
+func reversionPosition(token as string, digits as string) {
+    if (len($digits) > 5) {
+        fail("motif token '" + $token + "': position must be in [1, {RCRS_LENGTH}]");
+    }
+    def p as int init convert.toInt($digits);
+    if ($p < 1 or $p > RCRS_LENGTH) {
+        fail("motif token '" + $token + "': position must be in [1, {RCRS_LENGTH}]");
+    }
+    return $p;
+}
+
 # The loss of an inserted base is written with a leading minus: "-5899.1"
-# drops whatever an ancestor inserted at 5899.1.
+# drops a base an ancestor inserted at 5899. The index has at most four digits
+# and starts at 1, as in `lineage.parseDifference`.
 func insertionLoss(token as string, ch as list of string) {
     def parts as list of string init strings.split(strings.join($ch[1..], ""), ".");
     if (len($parts) != 2) {
@@ -159,9 +183,13 @@ func insertionLoss(token as string, ch as list of string) {
     if (not allDigits($pos, 0) or not allDigits($ins, 0)) {
         fail("motif token '" + $token + "': expected -<position>.<insertion>");
     }
+    def position as int init reversionPosition($token, $parts[0]);
+    if (len($ins) > 4 or convert.toInt($parts[1]) < 1) {
+        fail("motif token '" + $token + "': insertion index must be in [1, 9999]");
+    }
     return MotifItem{
         reversion: true,
-        position: convert.toInt($parts[0]),
+        position: $position,
         insertion: convert.toInt($parts[1]),
         designation: $token
     };
@@ -177,14 +205,21 @@ func insertionLoss(token as string, ch as list of string) {
  * last) is the opposite of `-8281.1`: it gains a deletion.
  * @param token {string} motif token as published
  * @return {MotifItem} the interpreted token
- * @throws {Error} kind "mitoleaf" on an empty token or a leading-minus token
- *   not of the form `-<position>.<insertion>`; kind "lineage" on a gain that
- *   is not valid rCRS nomenclature
+ * @throws {Error} kind "mitoleaf" on an empty token, a leading-minus token
+ *   not of the form `-<position>.<insertion>`, a back mutation whose position
+ *   is outside [1, 16569] or whose insertion index is outside [1, 9999]; kind
+ *   "lineage" on a gain that is not valid rCRS nomenclature
  */
 export func parseMotifItem(token as string) {
     def t as string init strings.upper(strings.trim($token));
     if (len($t) == 0) {
         fail("empty motif token");
+    }
+    # A gain ends in a base or a deletion mark; only a back mutation starts
+    # with "-" or ends in a digit, so most tokens skip the character split.
+    def last as string init strings.substring($t, len($t) - 1, len($t));
+    if (not strings.startsWith($t, "-") and not isDigit($last)) {
+        return gain($t);
     }
     def ch as list of string init strings.chars($t);
     if ($ch[0] == "-") {
@@ -193,11 +228,16 @@ export func parseMotifItem(token as string) {
     if (isReversion($ch)) {
         return MotifItem{
             reversion: true,
-            position: convert.toInt(strings.join($ch[1..], "")),
+            position: reversionPosition($t, strings.join($ch[1..], "")),
             insertion: 0,
             designation: $t
         };
     }
+    return gain($t);
+}
+
+# gain reads a gain token through `lineage.parseDifference`.
+func gain(t as string) {
     def d as lineage.Difference init lineage.parseDifference($t);
     return MotifItem{
         reversion: false,
@@ -207,12 +247,14 @@ export func parseMotifItem(token as string) {
     };
 }
 
-# motifKey identifies the reference position a token acts on, so a gain and a
-# later reversion at the same place meet in the same slot.
+# motifKey identifies the reference slot a token acts on, so a gain and a later
+# reversion at the same place meet in the same slot. Position and insertion are
+# zero-padded to the widths `lineage.parseDifference` allows (6 and 4 digits),
+# so `lists.sort` on keys orders slots by position, then insertion index.
 func motifKey(position as int, insertion as int) {
     def p as string init convert.toString($position);
     def i as string init convert.toString($insertion);
-    return $p + "." + $i;
+    return strings.repeat("0", 6 - len($p)) + $p + "." + strings.repeat("0", 4 - len($i)) + $i;
 }
 
 # splitMotif splits an HG attribute on whitespace, dropping the empty pieces a
@@ -227,18 +269,126 @@ func splitMotif(text as string) {
     return $out;
 }
 
-# applyMotif folds one node's motif into the accumulated state: a gain sets its
-# slot, a back mutation clears it. A reversion with nothing to revert is
-# ignored rather than rejected - a published tree may restate one.
-func applyMotif(state as map of string to string, motif as list of string) {
-    def out as map of string to string init $state;
-    for (def token in $motif) {
-        def m as MotifItem init parseMotifItem($token);
-        def key as string init motifKey($m.position, $m.insertion);
-        if ($m.reversion) {
-            $out = maps.delete($out, $key);
+# An op is one motif token parsed once. A node's ops are stored space-joined
+# in one string per node: `Tree.ops` then holds no struct of this module (the
+# interpreter rebuilds those at every call across the module boundary) and no
+# nested list for its retag check to walk. Layout: a kind letter, then for
+# G/R/L the 11-character `motifKey`:
+#   "G" + key + designation   a gain
+#   "R" + key                 `A263`, a reverting substitution
+#   "L" + key                 `-5899.1`, the loss of an inserted base
+#   "!" + index               a malformed token, the index-th of the motif,
+#                             re-parsed to throw where it is folded
+def const KEY_WIDTH as int init 11;
+
+# opOf encodes one token.
+func opOf(token as string) {
+    def m as MotifItem init parseMotifItem($token);
+    def key as string init motifKey($m.position, $m.insertion);
+    if (not $m.reversion) {
+        return "G" + $key + $m.designation;
+    }
+    if ($m.insertion == 0) {
+        return "R" + $key;
+    }
+    return "L" + $key;
+}
+
+# compileMotif encodes a node's tokens. A malformed token is kept for its
+# error, which is raised where the token is folded, so `parse` still accepts a
+# tree with a bad token in it.
+func compileMotif(motif as list of string) {
+    def out as list of string init [];
+    for (def i in 0..len($motif)) {
+        def op as string init "!{$i}";
+        try {
+            $op = opOf($motif[$i]);
+        } catch (e) {
+            $op = "!{$i}";
+        }
+        $out[] = $op;
+    }
+    return strings.join($out, " ");
+}
+
+# Change is the effect of one op on the accumulated state: `value` is the
+# designation left in slot `key`, "" for an emptied slot. An empty `key` means
+# the op changes nothing. `insertion` is set for a gained inserted base, so its
+# position can be recorded in the `top` bound.
+def struct Change {
+    key as string,
+    value as string,
+    insertion as int
+};
+
+# change applies one op to the accumulated state, which maps a slot
+# (`motifKey`) to its designation, "" for a slot a back mutation emptied. `top`
+# maps a padded position to the highest insertion index any gain so far used
+# there; it only bounds the search, so it may run ahead of `state`.
+#
+# A gain sets its slot. `A263` empties slot 263. `-5899.1` drops the last base
+# of the insertion run at 5899 - the highest index present, whatever index the
+# token names - so a partial loss shortens a run from its end. A back mutation
+# with nothing to revert changes nothing: a published tree may restate one.
+func change(op as string, state as map of string to string, top as map of string to int) {
+    def kind as string init strings.substring($op, 0, 1);
+    if ($kind == "!") {
+        # throws: the token did not parse when the tree was built
+        parseMotifItem(strings.substring($op, 1, len($op)));
+    }
+    def key as string init strings.substring($op, 1, KEY_WIDTH + 1);
+    if ($kind == "G") {
+        def ins as string init strings.substring($key, 7, KEY_WIDTH);
+        def insertion as int init 0;
+        if ($ins != "0000") {
+            $insertion = convert.toInt($ins);
+        }
+        return Change{
+            key: $key,
+            value: strings.substring($op, KEY_WIDTH + 1, len($op)),
+            insertion: $insertion
+        };
+    }
+    def none as Change init Change{key: "", value: "", insertion: 0};
+    if ($kind == "R") {
+        if (maps.has($state, $key) and len($state[$key]) > 0) {
+            return Change{key: $key, value: "", insertion: 0};
+        }
+        return $none;
+    }
+    def p as string init strings.substring($key, 0, 6);
+    if (not maps.has($top, $p)) {
+        return $none;
+    }
+    for (def i as int init $top[$p]; $i >= 1; $i = $i - 1) {
+        def n as string init convert.toString($i);
+        def slot as string init $p + "." + strings.repeat("0", 4 - len($n)) + $n;
+        if (maps.has($state, $slot) and len($state[$slot]) > 0) {
+            return Change{key: $slot, value: "", insertion: 0};
+        }
+    }
+    return $none;
+}
+
+# opsOf returns a node's ops, from `Tree.ops` or, for a node it lacks, from
+# the motif parsed now. A malformed token's op comes back as "!" + the token.
+func opsOf(t as Tree, id as string) {
+    def text as string init "";
+    if (maps.has($t.ops, $id)) {
+        $text = $t.ops[$id];
+    } else {
+        $text = compileMotif($t.nodes[$id].motif);
+    }
+    def out as list of string init [];
+    if (len($text) == 0) {
+        return $out;
+    }
+    for (def op in strings.split($text, " ")) {
+        if (strings.startsWith($op, "!")) {
+            def i as int init convert.toInt(strings.substring($op, 1, len($op)));
+            $out[] = "!" + $t.nodes[$id].motif[$i];
         } else {
-            $out[$key] = $m.designation;
+            $out[] = $op;
         }
     }
     return $out;
@@ -319,24 +469,39 @@ func flatten(root as xml.Value) {
  * Comments and wrapper elements around the root `<Node>` are skipped, so the
  * published file parses as downloaded. The element name matches in any case;
  * the attributes are read as `Id`, `id` or `ID` and `HG`, `hg` or `Hg`. Motif
- * tokens are stored verbatim and not validated here: a malformed one throws
- * later, from `haplotype`, `distance` or `assign`.
+ * tokens are stored verbatim and parsed once into `Tree.ops`; a malformed one
+ * is not rejected here but throws later, from `haplotype`, `distance` or
+ * `assign`.
  * @param doc {string} XML document text
  * @return {Tree} the parsed phylogeny
- * @throws {Error} kind "mitoleaf" if the document holds no `<Node>`, a node
- *   has no `Id`, or a haplogroup name appears twice
+ * @throws {Error} kind "mitoleaf" if the document is not well-formed XML,
+ *   holds no `<Node>` or more than one top-level `<Node>`, a node has no `Id`,
+ *   or a haplogroup name appears twice
  */
 export func parse(doc as string) {
-    def flat as list of Flat init flatten(xml.decode($doc));
+    def root as xml.Value;
+    try {
+        $root = xml.decode($doc);
+    } catch (e) {
+        fail("malformed XML: " + $e.message);
+    }
+    def flat as list of Flat init flatten($root);
     if (len($flat) == 0) {
         fail("no <Node> element found in the document");
     }
-    def t as Tree init Tree{root: $flat[0].id, nodes: {}};
+    def t as Tree init Tree{root: $flat[0].id, nodes: {}, ops: {}};
     for (def f in $flat) {
         if (maps.has($t.nodes, $f.id)) {
             fail("duplicate haplogroup '" + $f.id + "' in the tree");
         }
+        # `assign` walks down from `root`, so a second top-level node would be
+        # unreachable
+        if (len($f.parent) == 0 and $f.id != $t.root) {
+            fail("two top-level <Node> elements, '" + $t.root + "' and '" + $f.id +
+                "': a tree has one root");
+        }
         $t.nodes[$f.id] = Node{id: $f.id, parent: $f.parent, motif: $f.motif, children: []};
+        $t.ops[$f.id] = compileMotif($f.motif);
     }
     # Linked in place on the one binding: routing this through a helper that
     # takes and returns a Tree would deep-copy all 6000-odd nodes per link.
@@ -344,6 +509,24 @@ export func parse(doc as string) {
         if (len($f.parent) > 0) {
             $t.nodes[$f.parent].children[] = $f.id;
         }
+    }
+    return $t;
+}
+
+/**
+ * Build a `Tree` from nodes assembled by hand, filling `ops` from the motifs.
+ *
+ * Nothing is checked: `parent` and `children` must already link the nodes,
+ * and `root` must name one of them, or `assign` fails with a runtime error.
+ * Use it after editing a parsed tree's motifs, so `ops` matches them again.
+ * @param root {string} root haplogroup
+ * @param nodes {map of string to Node} haplogroup name to node
+ * @return {Tree} the tree, with `ops` built
+ */
+export func fromNodes(root as string, nodes as map of string to Node) {
+    def t as Tree init Tree{root: $root, nodes: $nodes, ops: {}};
+    for (def id in $nodes) {
+        $t.ops[$id] = compileMotif($nodes[$id].motif);
     }
     return $t;
 }
@@ -431,26 +614,55 @@ export func path(t as Tree, hg as string) {
 
 # --- haplotypes -------------------------------------------------------------
 
-# stateOf accumulates the motifs along a lineage into position -> designation.
+# stateOf accumulates the motifs along a lineage into slot -> designation, ""
+# for an emptied slot (see `change`).
 func stateOf(t as Tree, hg as string) {
-    def out as map of string to string init {};
+    def state as map of string to string init {};
+    def top as map of string to int init {};
     for (def id in path($t, $hg)) {
-        $out = applyMotif($out, $t.nodes[$id].motif);
+        for (def op in opsOf($t, $id)) {
+            def c as Change init change($op, $state, $top);
+            if (len($c.key) == 0) {
+                continue;
+            }
+            $state[$c.key] = $c.value;
+            if ($c.insertion > 0) {
+                $top = raiseTop($top, $c);
+            }
+        }
     }
-    return $out;
+    return $state;
 }
 
-func stateHaplotype(id as string, state as map of string to string) {
-    def parts as list of string init [];
-    for (def key in $state) {
-        $parts[] = $state[$key];
+# raiseTop records a gained insertion index in the per-position bound `change`
+# searches down from.
+func raiseTop(top as map of string to int, c as Change) {
+    def p as string init strings.substring($c.key, 0, 6);
+    if (not maps.has($top, $p) or $top[$p] < $c.insertion) {
+        $top[$p] = $c.insertion;
     }
-    return lineage.mtHaplotype($id, [WHOLE_GENOME], strings.join($parts, " "));
+    return $top;
+}
+
+# stateHaplotype builds the MtHaplotype directly from slots sorted by key, which
+# is `lineage`'s order (position, then insertion index). `lineage.mtHaplotype`
+# would sort through `lists.sortBy`, and a func value in the call tree makes the
+# interpreter deep-copy the caller's Tree per call.
+func stateHaplotype(id as string, state as map of string to string) {
+    def diffs as list of lineage.Difference init [];
+    for (def key in lists.sort(maps.keys($state))) {
+        if (len($state[$key]) > 0) {
+            $diffs[] = lineage.parseDifference($state[$key]);
+        }
+    }
+    return lineage.MtHaplotype{id: $id, ranges: [WHOLE_GENOME], differences: $diffs};
 }
 
 /**
  * A haplogroup's full haplotype: its motifs accumulated from the root, with
- * back mutations applied. A back mutation with nothing to revert is ignored.
+ * back mutations applied. A back mutation with nothing to revert is ignored;
+ * `-<position>.<insertion>` drops the highest-indexed inserted base still
+ * present at that position.
  *
  * The haplotype's id is `hg` and its one range is `WHOLE_GENOME`. An observed
  * haplotype usually covers only the control region, so
@@ -466,6 +678,60 @@ export func haplotype(t as Tree, hg as string) {
     return stateHaplotype($hg, stateOf($t, $hg));
 }
 
+# --- distance ---------------------------------------------------------------
+
+# observedState keys an observed haplotype the same way a motif state is keyed,
+# so the two compare without rebuilding an MtHaplotype per candidate. Two
+# designations in one slot (263G 263G, 263G 263A) would count twice in
+# `lineage.mtDistance` but once here, so they are rejected.
+func observedState(h as lineage.MtHaplotype) {
+    def out as map of string to string init {};
+    for (def d in $h.differences) {
+        def key as string init motifKey($d.position, $d.insertion);
+        def des as string init lineage.formatDifference($d);
+        if (maps.has($out, $key)) {
+            fail("haplotype '" + $h.id + "': '" + $out[$key] + "' and '" + $des +
+                "' name the same position");
+        }
+        $out[$key] = $des;
+    }
+    return $out;
+}
+
+# slotDistance scores one slot: 0 if both sides agree (both empty included), 1
+# if only one side carries a designation, 2 if both carry different ones.
+func slotDistance(a as string, b as string) {
+    if ($a == $b) {
+        return 0;
+    }
+    if (len($a) == 0 or len($b) == 0) {
+        return 1;
+    }
+    return 2;
+}
+
+# observedAt reads one slot of an observed state, "" if the slot is empty.
+func observedAt(observed as map of string to string, key as string) {
+    if (maps.has($observed, $key)) {
+        return $observed[$key];
+    }
+    return "";
+}
+
+# stateDistance is `lineage.mtDistance` over two keyed states.
+func stateDistance(state as map of string to string, observed as map of string to string) {
+    def total as int init 0;
+    for (def key in $state) {
+        $total = $total + slotDistance($state[$key], observedAt($observed, $key));
+    }
+    for (def key in $observed) {
+        if (not maps.has($state, $key)) {
+            $total = $total + 1;
+        }
+    }
+    return $total;
+}
+
 /**
  * `lineage.mtDistance` between a haplogroup's haplotype and an observed one:
  * a designation only one side carries counts 1, so a position both carry with
@@ -474,94 +740,119 @@ export func haplotype(t as Tree, hg as string) {
  * @param hg {string} haplogroup name
  * @param h {lineage.MtHaplotype} observed haplotype
  * @return {int} the distance
- * @throws {Error} kind "mitoleaf" if the tree has no such haplogroup or a
- *   motif on the lineage is malformed; kind "lineage" on an invalid gain
+ * @throws {Error} kind "mitoleaf" if the tree has no such haplogroup, a motif
+ *   on the lineage is malformed, or `h` carries two designations at one
+ *   position (`263G 263G`, `263G 263A`); kind "lineage" on an invalid gain
  */
 export func distance(t as Tree, hg as string, h as lineage.MtHaplotype) {
-    return lineage.mtDistance(haplotype($t, $hg), $h);
+    def state as map of string to string init stateOf($t, $hg);
+    return stateDistance($state, observedState($h));
 }
 
 # --- assignment -------------------------------------------------------------
-
-# observedState keys an observed haplotype the same way a motif state is keyed,
-# so the two compare without rebuilding an MtHaplotype per candidate.
-func observedState(h as lineage.MtHaplotype) {
-    def out as map of string to string init {};
-    for (def d in $h.differences) {
-        $out[motifKey($d.position, $d.insertion)] = lineage.formatDifference($d);
-    }
-    return $out;
-}
-
-# stateDistance is `lineage.mtDistance` over two keyed states: one point for a
-# position only one side carries, two for a position both carry differently.
-func stateDistance(a as map of string to string, b as map of string to string) {
-    def total as int init 0;
-    for (def key in $a) {
-        if (not maps.has($b, $key)) {
-            $total = $total + 1;
-        } elseif ($a[$key] != $b[$key]) {
-            $total = $total + 2;
-        }
-    }
-    for (def key in $b) {
-        if (not maps.has($a, $key)) {
-            $total = $total + 1;
-        }
-    }
-    return $total;
-}
-
-# Frame is one pending node of the search in `assign`, with the state its
-# parent reached.
-def struct Frame {
-    id as string,
-    state as map of string to string
-};
 
 /**
  * The haplogroup whose haplotype is nearest an observed one, by the same
  * measure as `distance`.
  *
- * One depth-first pass in document order scores every haplogroup once (about
- * 1.5 s on the 6409-haplogroup tree). Ties go to the first node reached, so an
- * ancestor beats an equally distant descendant.
+ * One depth-first pass in document order scores every haplogroup once. It
+ * keeps one motif state and one running distance, updates both only for the
+ * slots a node's motif touches and undoes them on the way back up, reading
+ * the motifs pre-parsed in `Tree.ops` (about 0.4 s on a 6409-haplogroup
+ * tree). Ties go to the first node reached, so an ancestor beats an equally
+ * distant descendant.
  *
  * This is a nearest-neighbour report, not a validated haplogroup call: it
  * ignores which positions were sequenced, weights every difference alike and
  * applies none of the phylogenetic rules of a classifier such as EMPOP or
  * HaploGrep. Check the result by hand with `path` and `haplotype`.
- * @param t {Tree} tree from `parse`; a tree with no nodes is a runtime error
+ * @param t {Tree} tree from `parse` or `fromNodes`; a tree with no nodes, or
+ *   whose `root` is not among its nodes, is a runtime error
  * @param h {lineage.MtHaplotype} observed haplotype
  * @return {Match} the nearest haplogroup and its distance
- * @throws {Error} kind "mitoleaf" or "lineage" on a malformed motif token
+ * @throws {Error} kind "mitoleaf" if `h` carries two designations at one
+ *   position; kind "mitoleaf" or "lineage" on a malformed motif token
  */
 export func assign(t as Tree, h as lineage.MtHaplotype) {
     # An explicit preorder stack, not recursion: a recursive call that passes
     # the Tree deep-copies all of it per node once the deck is imported.
     def observed as map of string to string init observedState($h);
-    def best as Match init Match{haplogroup: "", distance: -1};
-    def empty as map of string to string init {};
-    # `size` is the live depth: slots above it are reused, never sliced off,
-    # since a slice copies every pending state
-    def stack as list of Frame init [Frame{id: $t.root, state: $empty}];
+    def state as map of string to string init {};
+    def top as map of string to int init {};
+    # undo log: a slot and the designation it held before ("" for empty)
+    def undoKey as list of string init [];
+    def undoValue as list of string init [];
+    def undoSize as int init 0;
+    # Pending frames in parallel scalar lists (a struct frame would be copied
+    # out per pop). An enter frame has mark -1; an exit frame restores the undo
+    # log to `mark` and the distance to `dist`. `size` is the live depth: slots
+    # above it are reused, never sliced off.
+    def frameId as list of string init [$t.root];
+    def frameMark as list of int init [-1];
+    def frameDist as list of int init [0];
     def size as int init 1;
+    def d as int init len($observed);
+    def best as Match init Match{haplogroup: "", distance: -1};
     while ($size > 0) {
         $size = $size - 1;
-        def top as Frame init $stack[$size];
-        def here as map of string to string init applyMotif($top.state, $t.nodes[$top.id].motif);
-        def d as int init stateDistance($here, $observed);
-        if ($best.distance < 0 or $d < $best.distance) {
-            $best = Match{haplogroup: $top.id, distance: $d};
+        def id as string init $frameId[$size];
+        if ($frameMark[$size] >= 0) {
+            while ($undoSize > $frameMark[$size]) {
+                $undoSize = $undoSize - 1;
+                $state[$undoKey[$undoSize]] = $undoValue[$undoSize];
+            }
+            $d = $frameDist[$size];
+            continue;
         }
-        # pushed in reverse, so children are visited in document order
-        def kids as list of string init $t.nodes[$top.id].children;
-        for (def i as int init len($kids) - 1; $i >= 0; $i = $i - 1) {
-            def f as Frame init Frame{id: $kids[$i], state: $here};
-            if ($size < len($stack)) {
-                $stack[$size] = $f;
+        def mark as int init $undoSize;
+        def before as int init $d;
+        for (def op in opsOf($t, $id)) {
+            def c as Change init change($op, $state, $top);
+            if (len($c.key) == 0) {
+                continue;
+            }
+            def old as string init "";
+            if (maps.has($state, $c.key)) {
+                $old = $state[$c.key];
+            }
+            if ($old == $c.value) {
+                continue;
+            }
+            def o as string init observedAt($observed, $c.key);
+            $d = $d - slotDistance($old, $o) + slotDistance($c.value, $o);
+            if ($undoSize < len($undoKey)) {
+                $undoKey[$undoSize] = $c.key;
+                $undoValue[$undoSize] = $old;
             } else {
-                $stack[] = $f;
+                $undoKey[] = $c.key;
+                $undoValue[] = $old;
+            }
+            $undoSize = $undoSize + 1;
+            $state[$c.key] = $c.value;
+            if ($c.insertion > 0) {
+                $top = raiseTop($top, $c);
+            }
+        }
+        if ($best.distance < 0 or $d < $best.distance) {
+            $best = Match{haplogroup: $id, distance: $d};
+        }
+        # the exit frame goes under the children, so it runs after them
+        def kids as list of string init $t.nodes[$id].children;
+        for (def i as int init len($kids); $i >= 0; $i = $i - 1) {
+            def fid as string init $id;
+            def fmark as int init $mark;
+            if ($i < len($kids)) {
+                $fid = $kids[$i];
+                $fmark = -1;
+            }
+            if ($size < len($frameId)) {
+                $frameId[$size] = $fid;
+                $frameMark[$size] = $fmark;
+                $frameDist[$size] = $before;
+            } else {
+                $frameId[] = $fid;
+                $frameMark[] = $fmark;
+                $frameDist[] = $before;
             }
             $size = $size + 1;
         }

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 # White-box test overlay for mitoleaf.j. Run with `jennifer test mitoleaf_test.j`.
 #
@@ -9,6 +9,8 @@
 # back-mutation handling fails the suite instead of being blessed.
 use testing;
 use fs;
+use strings;
+use maps;
 
 # testdata/tree.xml, inline: a consumer runs this overlay from its own tree,
 # where testdata/ does not exist. testTreeMatchesTestdata keeps the two copies
@@ -16,7 +18,7 @@ use fs;
 def const TREE as string init '<?xml version="1.0" encoding="UTF-8"?>
 <!--
 Synthetic mitoLEAF-shaped fixture for the test overlay and the example.
-It is NOT the mitoLEAF phylogeny - four haplogroups, chosen to exercise the
+It is NOT the mitoLEAF phylogeny - seven haplogroups, chosen to exercise the
 parts that matter: an insertion, an IUPAC ambiguity, a deletion, and back
 mutations in both spellings - base-first (A263) and leading-minus (-315.1).
 Get the real tree from https://forensicgenomics.github.io/mitoLeaf/.
@@ -234,6 +236,219 @@ func malformedInsertionLoss() {
 
 func testMalformedInsertionLossThrows() {
     testing.assertThrows("malformedInsertionLoss", "mitoleaf");
+}
+
+# --- review regressions -----------------------------------------------------
+
+# haplotypeIn parses a one-off tree and returns one haplogroup's designations.
+func haplotypeIn(doc as string, hg as string) {
+    return lineage.mtDesignations(haplotype(parse($doc), $hg));
+}
+
+func testBackMutationWithNothingToRevertIsIgnored() {
+    # A73 and -315.1 name slots nothing on the lineage set, so A keeps exactly
+    # its parent's 263G; assign must not abort on them either.
+    def doc as string init '<Node Id="R" HG="263G"><Node Id="A" HG="A73 -315.1"/></Node>';
+    testing.assertEqual(haplotypeIn($doc, "A"), ["263G"]);
+    def m as Match init assign(parse($doc), observed("263G"));
+    testing.assertEqual($m.haplogroup, "R");
+    testing.assertEqual($m.distance, 0);
+}
+
+func testPartialInsertionLossDropsTheHighestIndex() {
+    # R inserts two bases at 5899; one loss shortens the run from its end
+    # (5899.2C goes, 5899.1C stays), a second loss empties it.
+    def doc as string init '<Node Id="R" HG="5899.1C 5899.2C"><Node Id="A" HG="-5899.1">' +
+        '<Node Id="B" HG="-5899.1"/></Node></Node>';
+    testing.assertEqual(haplotypeIn($doc, "A"), ["5899.1C"]);
+    testing.assertEqual(haplotypeIn($doc, "B"), []);
+    # assign follows the same rule: an observed 5899.1C is A exactly
+    def m as Match init assign(parse($doc), observed("5899.1C"));
+    testing.assertEqual($m.haplogroup, "A");
+    testing.assertEqual($m.distance, 0);
+}
+
+func twoRoots() {
+    parse('<x><Node Id="R" HG="263G"/><Node Id="S" HG="9999A"/></x>');
+}
+
+func testTwoTopLevelNodesThrow() {
+    testing.assertThrows("twoRoots", "mitoleaf");
+    def msg as string init "";
+    try {
+        twoRoots();
+    } catch (e) {
+        $msg = $e.message;
+    }
+    testing.assertTrue(strings.contains($msg, "'R'") and strings.contains($msg, "'S'"));
+}
+
+func malformedXml() {
+    parse('<Node Id="R"');
+}
+
+func testMalformedXmlThrowsMitoleaf() {
+    testing.assertThrows("malformedXml", "mitoleaf");
+}
+
+# rawObserved builds a haplotype without lineage.mtHaplotype, which in newer
+# forensicgenetics releases rejects these inputs itself.
+func rawObserved(designations as list of string) {
+    def ds as list of lineage.Difference init [];
+    for (def d in $designations) {
+        $ds[] = lineage.parseDifference($d);
+    }
+    return lineage.MtHaplotype{id: "evidence", ranges: [WHOLE_GENOME], differences: $ds};
+}
+
+func assignConflict() {
+    assign(tree(), rawObserved(["263G", "263A"]));
+}
+
+func distanceConflict() {
+    distance(tree(), "L0", rawObserved(["263G", "263A"]));
+}
+
+func assignDuplicate() {
+    assign(tree(), rawObserved(["9999A", "9999A"]));
+}
+
+func distanceDuplicate() {
+    distance(tree(), "L0", rawObserved(["9999A", "9999A"]));
+}
+
+func testTwoDesignationsAtOnePositionThrowInAssignAndDistance() {
+    testing.assertThrows("assignConflict", "mitoleaf");
+    testing.assertThrows("distanceConflict", "mitoleaf");
+    testing.assertThrows("assignDuplicate", "mitoleaf");
+    testing.assertThrows("distanceDuplicate", "mitoleaf");
+}
+
+func testDistanceIsLineageMtDistanceForEveryHaplogroup() {
+    def t as Tree init tree();
+    def h as lineage.MtHaplotype init observed("73G 146C 315.1C 1048T 5231A 9999A 16519Y");
+    for (def hg in haplogroups($t)) {
+        testing.assertEqual(distance($t, $hg, $h), lineage.mtDistance(haplotype($t, $hg), $h));
+    }
+}
+
+func testAssignAgreesWithDistanceEverywhere() {
+    # Brute force: the minimum of `distance` over the tree in document order,
+    # first minimum kept, for each haplogroup's own haplotype plus one extra
+    # difference.
+    def t as Tree init tree();
+    for (def target in haplogroups($t)) {
+        def text as string init strings.join(lineage.mtDesignations(haplotype($t, $target)), " ");
+        def h as lineage.MtHaplotype init observed($text + " 9999A");
+        def want as Match init Match{haplogroup: "", distance: -1};
+        for (def hg in haplogroups($t)) {
+            def d as int init distance($t, $hg, $h);
+            if ($want.distance < 0 or $d < $want.distance) {
+                $want = Match{haplogroup: $hg, distance: $d};
+            }
+        }
+        testing.assertEqual(assign($t, $h), $want);
+        testing.assertEqual($want, Match{haplogroup: $target, distance: 1});
+    }
+}
+
+func reversionAtZero() {
+    parseMotifItem("A0");
+}
+
+func reversionPastTheGenome() {
+    parseMotifItem("A16570");
+}
+
+func reversionOverflowing() {
+    parseMotifItem("A99999999999999999999999");
+}
+
+func insertionLossAtIndexZero() {
+    parseMotifItem("-263.0");
+}
+
+func insertionLossAtPositionZero() {
+    parseMotifItem("-0.1");
+}
+
+func insertionLossPastTheGenome() {
+    parseMotifItem("-16570.1");
+}
+
+func insertionLossOverlongIndex() {
+    parseMotifItem("-5899.99999999999999999999");
+}
+
+func testBackMutationOutsideTheReferenceThrows() {
+    testing.assertThrows("reversionAtZero", "mitoleaf");
+    testing.assertThrows("reversionPastTheGenome", "mitoleaf");
+    testing.assertThrows("reversionOverflowing", "mitoleaf");
+    testing.assertThrows("insertionLossAtIndexZero", "mitoleaf");
+    testing.assertThrows("insertionLossAtPositionZero", "mitoleaf");
+    testing.assertThrows("insertionLossPastTheGenome", "mitoleaf");
+    testing.assertThrows("insertionLossOverlongIndex", "mitoleaf");
+    # the ends of the range are accepted: 16569 is the last rCRS position
+    testing.assertEqual(parseMotifItem("A16569").position, 16569);
+    testing.assertEqual(parseMotifItem("-16569.1").position, 16569);
+    testing.assertEqual(parseMotifItem("A1").position, 1);
+}
+
+# --- the parsed-motif cache --------------------------------------------------
+
+func testParseFillsOpsForEveryHaplogroup() {
+    def t as Tree init tree();
+    testing.assertEqual(maps.keys($t.ops), haplogroups($t));
+    # L0 is "A263 1048T": a reversion, then a gain
+    testing.assertEqual(len(opsOf($t, "L0")), 2);
+    # 16187T: kind G, position padded to 016187, insertion 0000, designation
+    testing.assertEqual(opsOf($t, "L0b"), ["G016187.000016187T"]);
+}
+
+func testFromNodesRebuildsTheParsedTree() {
+    def t as Tree init tree();
+    testing.assertEqual(fromNodes($t.root, $t.nodes), $t);
+}
+
+func testTreeWithoutOpsGivesTheSameResults() {
+    # an empty `ops` makes every fold parse the motif itself
+    def t as Tree init tree();
+    def bare as Tree init Tree{root: $t.root, nodes: $t.nodes, ops: {}};
+    def h as lineage.MtHaplotype init observed("73G 315.1C 1048T 5231A 9999A 16519Y");
+    for (def hg in haplogroups($t)) {
+        testing.assertEqual(haplotype($bare, $hg), haplotype($t, $hg));
+        testing.assertEqual(distance($bare, $hg, $h), distance($t, $hg, $h));
+    }
+    testing.assertEqual(assign($bare, $h), assign($t, $h));
+}
+
+func testFromNodesPicksUpAnEditedMotif() {
+    # L0b's motif 16187T replaced by 9999A: its haplotype is L0's plus 9999A
+    def t as Tree init tree();
+    def nodes as map of string to Node init $t.nodes;
+    $nodes["L0b"].motif = ["9999A"];
+    testing.assertEqual(
+        lineage.mtDesignations(haplotype(fromNodes($t.root, $nodes), "L0b")),
+        ["73G", "146C", "315.1C", "1048T", "9999A", "16519Y"]);
+}
+
+func badTokenTree() {
+    return parse('<Node Id="R" HG="263G"><Node Id="A" HG="9999A"/><Node Id="B" HG="263Q"/></Node>');
+}
+
+func badTokenHaplotype() {
+    haplotype(badTokenTree(), "B");
+}
+
+func badTokenAssign() {
+    assign(badTokenTree(), observed("263G"));
+}
+
+func testMalformedTokenParsesButThrowsWhenFolded() {
+    # parse keeps the tree; the token's lineage error comes from the fold
+    testing.assertEqual(lineage.mtDesignations(haplotype(badTokenTree(), "A")), ["263G", "9999A"]);
+    testing.assertThrows("badTokenHaplotype", "lineage");
+    testing.assertThrows("badTokenAssign", "lineage");
 }
 
 # --- the inline fixture -------------------------------------------------------

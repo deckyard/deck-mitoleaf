@@ -38,7 +38,8 @@ deck reads them itself:
 `8281-` and `-8281.1` are opposite operations: minus last gains a deletion,
 minus first drops an insertion. `A263` is a reversion; `A263G` is a
 substitution. A back mutation with nothing to revert is ignored, because
-published trees restate some.
+published trees restate some. Both spellings name a reference position in
+[1, 16569]; the insertion index is in [1, 9999].
 
 ```jennifer
 mitoleaf.parseMotifItem("315.1c");   # reversion false, position 315, insertion 1
@@ -51,7 +52,14 @@ mitoleaf.parseMotifItem("-5899.1");  # reversion true,  position 5899, insertion
 A haplogroup's haplotype is not the concatenation of its ancestors' motifs:
 positions are lost as well as gained. `haplotype` folds them from the root
 down. Each token acts on one slot, its position plus insertion index, so
-`-315.1` removes `315.1C` and leaves a change at 315 itself alone:
+`-315.1` removes `315.1C` and leaves a change at 315 itself alone.
+
+A leading-minus token drops one inserted base: the highest-indexed one still
+present at that position, whatever index the token names. Under
+`5899.1C 5899.2C`, `-5899.1` leaves `5899.1C`, and a second `-5899.1` leaves
+nothing. A partial loss shortens an insertion run from its end.
+
+Down one lineage of the example above:
 
 ```
 mt-MRCA   73G 146C 263G 315.1C 16519Y
