@@ -291,6 +291,16 @@ func testMalformedXmlThrowsMitoleaf() {
     testing.assertThrows("malformedXml", "mitoleaf");
 }
 
+func tooDeepXml() {
+    parse(strings.repeat("<a>", 1100) + strings.repeat("</a>", 1100));
+}
+
+# A document past the XML decoder's nesting cap is a reached cap: kind
+# "limit", passed on unchanged rather than reported as malformed XML.
+func testXmlPastTheDecoderCapIsKindLimit() {
+    testing.assertThrows("tooDeepXml", "limit");
+}
+
 # rawObserved builds a haplotype without lineage.mtHaplotype, which in newer
 # forensicgenetics releases rejects these inputs itself.
 func rawObserved(designations as list of string) {

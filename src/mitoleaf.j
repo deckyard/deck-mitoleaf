@@ -477,12 +477,18 @@ func flatten(root as xml.Value) {
  * @throws {Error} kind "mitoleaf" if the document is not well-formed XML,
  *   holds no `<Node>` or more than one top-level `<Node>`, a node has no `Id`,
  *   or a haplogroup name appears twice
+ * @throws {Error} kind "limit" if the document nests deeper, or holds more
+ *   nodes, than `xml.decode` accepts
  */
 export func parse(doc as string) {
     def root as xml.Value;
     try {
         $root = xml.decode($doc);
     } catch (e) {
+        # a decoder cap (nesting, nodes) is kind "limit": passed on unchanged
+        if ($e.kind == "limit") {
+            throw $e;
+        }
         fail("malformed XML: " + $e.message);
     }
     def flat as list of Flat init flatten($root);

@@ -43,11 +43,13 @@ Haplogroup names match exactly, case included.
 ## Errors
 
 Errors are `Error{kind: "mitoleaf"}`, except an invalid motif gain, which
-raises `kind: "lineage"` from `lineage.parseDifference`.
+raises `kind: "lineage"` from `lineage.parseDifference`, and a document past
+`xml.decode`'s caps, whose `kind: "limit"` passes on unchanged.
 
 | Condition | `kind` | Thrown by |
 | --- | --- | --- |
 | the document is not well-formed XML | `mitoleaf` | `parse` |
+| the document nests deeper, or holds more nodes, than `xml.decode` accepts | `limit` | `parse` |
 | the document holds no `<Node>` | `mitoleaf` | `parse` |
 | more than one top-level `<Node>` | `mitoleaf` | `parse` |
 | a `<Node>` has no `Id` | `mitoleaf` | `parse` |
