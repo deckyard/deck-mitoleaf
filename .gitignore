@@ -15,3 +15,4 @@ vendor/
 # The real mitoLEAF download, kept locally for benchmarks; not redistributed.
 testdata/mitoLEAF_phm.xml
 .docblocks-*/
+.check-tiny-*/
