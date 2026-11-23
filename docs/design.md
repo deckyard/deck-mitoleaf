@@ -127,7 +127,8 @@ error.
 
 ## Dependencies on the interpreter
 
-- Floor `>=0.26.0`, the default binary (no `jennifer-tiny` engine declared).
+- Floor `>=0.27.0` (`strings.replicate` arrived in 0.27.0), the default
+  binary (no `jennifer-tiny` engine declared).
 - `xml.decode`; `@deckyard/forensicgenetics` `>=0.1.0` through `[decks]`.
 - Performance depends on `jennifer`'s M29.14 (cheaper calls into another
   module) and M30.8 (borrow through named callbacks).

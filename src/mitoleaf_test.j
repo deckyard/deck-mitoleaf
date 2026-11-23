@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # White-box test overlay for mitoleaf.j. Run with `jennifer test mitoleaf_test.j`.
 #
@@ -292,7 +292,7 @@ func testMalformedXmlThrowsMitoleaf() {
 }
 
 func tooDeepXml() {
-    parse(strings.repeat("<a>", 1100) + strings.repeat("</a>", 1100));
+    parse(strings.replicate("<a>", 1100) + strings.replicate("</a>", 1100));
 }
 
 # A document past the XML decoder's nesting cap is a reached cap: kind

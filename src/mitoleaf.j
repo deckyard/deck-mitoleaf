@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 /**
  * Reader for the mitoLEAF human mitochondrial phylogeny.
@@ -217,7 +217,7 @@ export func parseMotifItem(token as string) {
     }
     # A gain ends in a base or a deletion mark; only a back mutation starts
     # with "-" or ends in a digit, so most tokens skip the character split.
-    def last as string init strings.substring($t, len($t) - 1, len($t));
+    def last as string init $t[len($t) - 1..len($t)];
     if (not strings.startsWith($t, "-") and not isDigit($last)) {
         return gain($t);
     }
@@ -254,7 +254,7 @@ func gain(t as string) {
 func motifKey(position as int, insertion as int) {
     def p as string init convert.toString($position);
     def i as string init convert.toString($insertion);
-    return strings.repeat("0", 6 - len($p)) + $p + "." + strings.repeat("0", 4 - len($i)) + $i;
+    return strings.replicate("0", 6 - len($p)) + $p + "." + strings.replicate("0", 4 - len($i)) + $i;
 }
 
 # splitMotif splits an HG attribute on whitespace, dropping the empty pieces a
@@ -331,23 +331,19 @@ def struct Change {
 # token names - so a partial loss shortens a run from its end. A back mutation
 # with nothing to revert changes nothing: a published tree may restate one.
 func change(op as string, state as map of string to string, top as map of string to int) {
-    def kind as string init strings.substring($op, 0, 1);
+    def kind as string init $op[..1];
     if ($kind == "!") {
         # throws: the token did not parse when the tree was built
-        parseMotifItem(strings.substring($op, 1, len($op)));
+        parseMotifItem($op[1..len($op)]);
     }
-    def key as string init strings.substring($op, 1, KEY_WIDTH + 1);
+    def key as string init $op[1..KEY_WIDTH + 1];
     if ($kind == "G") {
-        def ins as string init strings.substring($key, 7, KEY_WIDTH);
+        def ins as string init $key[7..KEY_WIDTH];
         def insertion as int init 0;
         if ($ins != "0000") {
             $insertion = convert.toInt($ins);
         }
-        return Change{
-            key: $key,
-            value: strings.substring($op, KEY_WIDTH + 1, len($op)),
-            insertion: $insertion
-        };
+        return Change{key: $key, value: $op[KEY_WIDTH + 1..len($op)], insertion: $insertion};
     }
     def none as Change init Change{key: "", value: "", insertion: 0};
     if ($kind == "R") {
@@ -356,13 +352,13 @@ func change(op as string, state as map of string to string, top as map of string
         }
         return $none;
     }
-    def p as string init strings.substring($key, 0, 6);
+    def p as string init $key[..6];
     if (not maps.has($top, $p)) {
         return $none;
     }
     for (def i as int init $top[$p]; $i >= 1; $i = $i - 1) {
         def n as string init convert.toString($i);
-        def slot as string init $p + "." + strings.repeat("0", 4 - len($n)) + $n;
+        def slot as string init $p + "." + strings.replicate("0", 4 - len($n)) + $n;
         if (maps.has($state, $slot) and len($state[$slot]) > 0) {
             return Change{key: $slot, value: "", insertion: 0};
         }
@@ -385,7 +381,7 @@ func opsOf(t as Tree, id as string) {
     }
     for (def op in strings.split($text, " ")) {
         if (strings.startsWith($op, "!")) {
-            def i as int init convert.toInt(strings.substring($op, 1, len($op)));
+            def i as int init convert.toInt($op[1..len($op)]);
             $out[] = "!" + $t.nodes[$id].motif[$i];
         } else {
             $out[] = $op;
@@ -643,7 +639,7 @@ func stateOf(t as Tree, hg as string) {
 # raiseTop records a gained insertion index in the per-position bound `change`
 # searches down from.
 func raiseTop(top as map of string to int, c as Change) {
-    def p as string init strings.substring($c.key, 0, 6);
+    def p as string init $c.key[..6];
     if (not maps.has($top, $p) or $top[$p] < $c.insertion) {
         $top[$p] = $c.insertion;
     }
