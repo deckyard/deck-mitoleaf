@@ -116,7 +116,7 @@ path, so a `Tree` built through either import is the same type.
 ## Getting the tree
 
 Download the phm XML from
-[mitoLEAF](https://forensicgenomics.github.io/mitoLeaf/) (at the time of
+[mitoLEAF™](https://forensicgenomics.github.io/mitoLeaf/) (at the time of
 writing `docs/data/mitoLEAF_phm.xml`, 549 KB, 6409 haplogroups) and pass its
 text to `parse`. The file's leading comments are a changelog of variants added,
 removed and respelled; record which release you used with any result.

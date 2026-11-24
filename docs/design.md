@@ -5,7 +5,7 @@
 
 ## Scope
 
-A reader for the mitoLEAF human mitochondrial phylogeny, the "phm" XML of
+A reader for the mitoLEAF™ human mitochondrial phylogeny, the "phm" XML of
 nested `<Node>` elements. `parse` builds a haplogroup `Tree`; `path`,
 `motif`, `children` and `node` walk it; `haplotype` accumulates a
 haplogroup's motifs from the root with back mutations applied; `distance`
@@ -17,7 +17,7 @@ Not in scope:
 
 - **A classifier.** `assign` is a nearest-neighbour report by symmetric
   difference: no range awareness, no weighting by how informative a position
-  is, none of EMPOP's or HaploGrep's phylogenetic reasoning.
+  is, none of EMPOP™'s or HaploGrep™'s phylogenetic reasoning.
   [Limitations](project/limitations.md) spells this out.
 - **Phylogenetic alignment** of indels, which neither this deck nor its
   dependency does.

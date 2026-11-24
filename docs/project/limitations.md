@@ -8,7 +8,7 @@ smallest symmetric difference. It:
 - weights every difference alike, where a classifier weights by how
   phylogenetically informative a position is and discounts unstable ones
 - applies none of the phylogenetic reasoning, alignment rules included, of
-  EMPOP's or HaploGrep's classifiers
+  EMPOP™'s or HaploGrep™'s classifiers
 
 Treat the result as a starting point and check it with `path` and `haplotype`.
 
@@ -20,7 +20,7 @@ distance does not show that this happened. Check `lineage.mtRangesAgree`.
 
 **No phylogenetic alignment.** EMPOP shifts indels to the position the mtDNA
 phylogeny prefers. Neither this deck nor `lineage.align` does, so a complex
-indel may be designated differently from how mitoLEAF or EMPOP write it, and
+indel may be designated differently from how mitoLEAF™ or EMPOP write it, and
 then it will not match.
 
 **The tree moves.** mitoLEAF adds haplogroups, removes variants and respells

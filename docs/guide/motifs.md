@@ -1,6 +1,6 @@
 # Motifs and back mutations
 
-mitoLEAF publishes the tree as nested `<Node>` elements. Each carries a
+mitoLEAF™ publishes the tree as nested `<Node>` elements. Each carries a
 haplogroup name and the motif it adds to its parent:
 
 ```xml

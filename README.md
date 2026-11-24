@@ -4,8 +4,8 @@
 [![docs](https://github.com/deckyard/deck-mitoleaf/actions/workflows/docs.yml/badge.svg)](https://github.com/deckyard/deck-mitoleaf/actions/workflows/docs.yml)
 [![release](https://img.shields.io/github/v/release/deckyard/deck-mitoleaf)](https://github.com/deckyard/deck-mitoleaf/releases/latest)
 
-Reads the [mitoLEAF](https://forensicgenomics.github.io/mitoLeaf/) human
-mitochondrial phylogeny (the maintained successor to PhyloTree), turns a
+Reads the [mitoLEAF™](https://forensicgenomics.github.io/mitoLeaf/) human
+mitochondrial phylogeny (the maintained successor to PhyloTree™), turns a
 haplogroup into its defining haplotype with back mutations applied, and finds
 the haplogroup nearest an observed haplotype. Haplotypes are
 `lineage.MtHaplotype` values from
@@ -75,3 +75,11 @@ mitoLEAF data is MPL-2.0; none is redistributed here.
 ## Licence
 
 LGPL-3.0-only, see [LICENSE](LICENSE). Copyright (C) 2026 mplx &lt;mplx@jennifer-lang.dev&gt;.
+
+## Trademarks
+
+mitoLEAF™, EMPOP™, HaploGrep™ and PhyloTree™ may be trademarks of their
+respective owners. They are used only to identify the data and tools this
+deck works with. This deck is an independent project, not affiliated with,
+sponsored or endorsed by the authors of mitoLEAF, EMPOP, HaploGrep or
+PhyloTree.
