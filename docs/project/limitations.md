@@ -31,10 +31,13 @@ phm file states it in a leading comment.
 **No tree is bundled.** `testdata/tree.xml` is a seven-haplogroup synthetic
 fixture for the tests and the example, not the phylogeny.
 
-**Whole-tree operations take seconds.** `parse` takes ~0.7 s and `assign`
-~0.4 s on the published tree, and every call that passes the `Tree` ~5.5 ms
-([figures](../guide/assignment.md#performance)): fine interactively, too slow
-inside a loop over thousands of samples without restructuring.
+**Whole-tree operations take seconds.** On Jennifer 0.27.0 `parse` takes
+~0.7 s and `assign` ~0.4 s on the published tree, and every call that passes
+the `Tree` ~5.5 ms: fine interactively, too slow inside a loop over thousands
+of samples without restructuring. On 0.28.0 `parse` and `assign` are about
+twice as fast and the per-call cost is gone: `has` and `path` under 0.1 ms,
+`distance` and `haplotype` about 1.2 ms
+([figures](../guide/assignment.md#performance)).
 
 **Not a validated forensic tool.** Neither this deck nor `@deckyard/forensicgenetics`
 has been through the validation any jurisdiction requires of software used in

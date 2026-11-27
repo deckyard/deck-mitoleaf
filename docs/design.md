@@ -101,8 +101,10 @@ error.
   without `testdata/`; a test keeps it byte-equal to `testdata/tree.xml`.
 - Agreement with `lineage.mtDistance` and between `assign` and `distance` is
   tested over every haplogroup.
-- Timings were taken on the published 6409-haplogroup tree: `parse` about
-  0.7 s, `assign` about 0.4 s, and every call passing the `Tree` about 5.5 ms
+- Timings were taken on the published 6409-haplogroup tree with Jennifer
+  0.27.0: `parse` about 0.7 s, `assign` about 0.4 s, and every call passing
+  the `Tree` about 5.5 ms. On 0.28.0 `parse` and `assign` are about twice as
+  fast and the per-call cost is gone
   ([figures](guide/assignment.md#performance)).
 - The tests need `vendor/` populated (`tools/vendor-deps.sh`, network),
   which fetches the released forensicgenetics through the registry.
@@ -110,12 +112,14 @@ error.
 
 ## Known limitations and open questions
 
-- Every call from an importing program that passes a `Tree` costs about
-  5.5 ms on the published tree before doing any work, because the
-  interpreter rebuilds values holding a module's own structs at the
-  boundary. A loop calling `distance` per haplogroup takes about a minute;
-  `assign` scores the whole tree in one call. The fix belongs to the
-  interpreter (`jennifer`'s M29.14).
+- On Jennifer 0.27.0 every call from an importing program that passes a
+  `Tree` costs about 5.5 ms on the published tree before doing any work,
+  because the interpreter rebuilds values holding a module's own structs at
+  the boundary. A loop calling `distance` per haplogroup takes about a
+  minute; `assign` scores the whole tree in one call. On 0.28.0
+  (`jennifer`'s M29.14) the cost is gone: `has` and `path` take under 0.1 ms
+  a call, `distance` and `haplotype` about 1.2 ms, and the `distance` loop
+  over every haplogroup 10 s instead of 84 s on a tree of the same size.
 - Code reachable with the `Tree` in its call chain must not use a callback
   builtin such as `lists.sortBy`: it made every `haplotype` and `distance`
   call copy the whole tree. The deck sorts plain keys instead
@@ -131,4 +135,4 @@ error.
   binary (no `jennifer-tiny` engine declared).
 - `xml.decode`; `@deckyard/forensicgenetics` `>=0.1.0` through `[decks]`.
 - Performance depends on `jennifer`'s M29.14 (cheaper calls into another
-  module) and M30.8 (borrow through named callbacks).
+  module, in 0.28.0) and M30.8 (borrow through named callbacks).

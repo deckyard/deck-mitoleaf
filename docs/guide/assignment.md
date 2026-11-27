@@ -59,7 +59,7 @@ for (def hg in mitoleaf.path($t, $m.haplogroup)) {
 
 ## Performance
 
-On the published 6409-haplogroup tree, one desktop core:
+On the published 6409-haplogroup tree, one desktop core, Jennifer 0.27.0:
 
 | Operation | Time |
 | --- | --- |
@@ -76,8 +76,21 @@ deep-copied the node map at every node and took 2m14s on the same file.
 the work by the tree's depth, and walks with an explicit stack: as a recursion
 that passed the `Tree` along it took 56 s in an importing program.
 
-Every call into the deck that passes a `Tree` costs ~5.5 ms on this tree, before
-any work: the interpreter rebuilds a value holding the deck's own structs
-(`Tree`, `Node`) at each call across the module boundary. A loop calling
+On 0.27.0 every call into the deck that passes a `Tree` costs ~5.5 ms on this
+tree, before any work: the interpreter rebuilds a value holding the deck's own
+structs (`Tree`, `Node`) at each call across the module boundary. A loop calling
 `distance` once per haplogroup therefore takes ~1 min; `assign` scores the
 whole tree in one call.
+
+On 0.28.0 that per-call cost is gone (`jennifer`'s M29.14). Measured on a
+synthetic tree of the same size (6409 haplogroups), same host:
+
+| Operation | 0.27.0 | 0.28.0 |
+| --- | --- | --- |
+| `parse` | 2.1 s | 0.9 s |
+| `assign` | 1.4 s | 0.6 s |
+| `has`, per call | 9.2 ms | under 0.01 ms |
+| `path`, per call | 7.6 ms | 0.03 ms |
+| `distance`, per call | 14.7 ms | 1.1 ms |
+| `haplotype`, per call | 11.6 ms | 1.2 ms |
+| `distance` once per haplogroup, whole program | 84 s | 10 s |
